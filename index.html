@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>燃烧王🔥🔥🔥 | 终极DApp</title>
+<script src="https://cdn.bootcdn.net/ajax/libs/ethers/5.7.2/ethers.umd.min.js"></script>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
+  body{background:#0a0a0a;color:#fff;padding:15px;padding-bottom:40px;}
+  .container{max-width:480px;margin:0 auto}
+  header{display:flex;justify-content:space-between;align-items:center;padding:18px 0;border-bottom:1px solid #222}
+  .logo{font-size:22px;font-weight:700;color:#ff3d3d}
+  button{transition: all 0.2s ease;}
+  button:disabled{background:#333 !important; color:#888 !important; cursor:not-allowed !important;}
+  #connectBtn{background:#ff3d3d;color:#fff;border:none;padding:10px 16px;border-radius:12px;font-weight:700;cursor:pointer}
+  .card{background:#121212;border-radius:20px;padding:24px;margin:16px 0;border:1px solid #222}
+  .card h3{color:#ff3d3d;margin-bottom:18px;font-size:18px;display:flex;align-items:center}
+  .balance{color:#aaa;margin-bottom:12px; display:flex; justify-content:space-between; font-size:14px}
+  .input-group{position:relative;margin-bottom:10px}
+  input{width:100%;background:#1a1a1a;border:1px solid #333;border-radius:14px;padding:16px;color:#fff;font-size:16px;outline:0}
+  input:focus{border-color:#ff3d3d}
+  .quick-btns{display:flex;gap:8px;margin-bottom:15px}
+  .quick-btns button{flex:1;background:#222;color:#fff;border:none;padding:10px;border-radius:10px;font-size:13px;cursor:pointer}
+  .btn-group{display:flex;gap:10px}
+  .main-btn{width:100%;background:#ff3d3d;color:#fff;border:none;padding:16px;border-radius:14px;font-weight:700;font-size:16px;cursor:pointer;margin-top:5px}
+  .invite-box{margin-top:15px; padding:15px; background:#1a1a1a; border-radius:14px; border:1px dashed #444;}
+  .copy-btn{background:#333; color:#fff; padding:12px; border-radius:10px; border:none; width:100%; margin-top:10px; font-size:13px; cursor:pointer;}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .grid-item{background:#1a1a1a;padding:16px;border-radius:12px;font-size:13px;color:#aaa}
+  .grid-item strong{color:#ff3d3d;font-size:18px; display:block; margin-top:6px;}
+  .status{margin-top:16px;padding:12px;border-radius:10px;text-align:center; display:none; font-size:13px; word-break:break-all; line-height:1.4}
+  .status.info{background:#132a45;color:#90caf9; display:block;}
+  .status.success{background:#153a25;color:#81c784; display:block;}
+  .status.error{background:#3a1518;color:#e57373; display:block;}
+</style>
+</head>
+<body>
+<div class="container">
+<header>
+  <div class="logo">🔥 燃烧王 DApp</div>
+  <button id="connectBtn" onclick="connectWallet()">连接钱包</button>
+</header>
+
+<div class="card">
+  <h3>🔥 授权与燃烧</h3>
+  <div class="balance"><span id="balanceTxt">可用余额：--</span></div>
+  
+  <div class="input-group">
+    <input type="number" id="burnAmount" placeholder="输入燃烧数量">
+  </div>
+  <div class="quick-btns">
+    <button onclick="setQuickAmount(0.1)">10%</button>
+    <button onclick="setQuickAmount(0.5)">50%</button>
+    <button onclick="setQuickAmount(1)">MAX</button>
+  </div>
+
+  <div class="btn-group">
+    <button class="main-btn" id="approveBtn" onclick="approve()">1. 授权(Approve)</button>
+    <button class="main-btn" id="burnBtn" onclick="burn()">2. 燃烧(Burn)</button>
+  </div>
+  <div id="status" class="status"></div>
+</div>
+
+<div class="card">
+  <h3>👥 邀请与绑定</h3>
+  <input type="text" id="inviter" placeholder="输入邀请人钱包地址 (0x...)">
+  <button class="main-btn" id="bindBtn" onclick="bindInviter()">确认绑定邀请人</button>
+  
+  <div class="invite-box">
+      <p style="font-size:12px; color:#aaa; margin-bottom:8px;">您的专属裂变链接：</p>
+      <code id="myLinkDisplay" style="font-size:11px; color:#ff3d3d; word-break:break-all;">请先连接钱包获取链接</code>
+      <button class="copy-btn" onclick="copyInviteLink()">🔗 一键复制链接发送好友</button>
+  </div>
+</div>
+
+<div class="card">
+  <h3>📊 收益面板</h3>
+  <div class="grid">
+    <div class="grid-item">待领取分红<strong id="myReward">-- BNB</strong></div>
+    <button class="main-btn" onclick="claim()" style="height:100%;margin:0;background:#2a2a2a">一键领取</button>
+  </div>
+</div>
+</div>
+
+<script>
+// ================= 核心配置区 =================
+const CONFIG = {
+  chainId: 56,
+  tokenAddr: "0x1382992c4f997a21256be58dc546e9937a5f7777", // 代币账本
+  logicAddr: "0xe3115d9dad43e47e9ae54d3cef1001aa34d8e602"  // 业务逻辑
+};
+
+const ABI = [
+  "function decimals() view returns (uint8)",
+  "function balanceOf(address) view returns (uint256)",
+  "function approve(address, uint256) returns (bool)",
+  "function burn(uint256)",
+  "function bindInviter(address)",
+  "function claimRewards()",
+  "function pendingRewards(address) view returns (uint256)"
+];
+
+let provider, signer, userAddress, tokenContract, logicContract;
+let tokenDecimals = 18; // 默认精度，后续动态读取
+let rawBalance = ethers.BigNumber.from(0); // 保存原始余额用于精确计算
+
+// 初始化：解析邀请链接参数
+window.onload = () => {
+  const params = new URLSearchParams(window.location.search);
+  const ref = params.get('ref');
+  if (ref && ethers.utils.isAddress(ref)) {
+    document.getElementById('inviter').value = ref;
+  }
+};
+
+// 监听钱包账号/网络切换 (防呆设计)
+if (window.ethereum) {
+  window.ethereum.on('accountsChanged', () => window.location.reload());
+  window.ethereum.on('chainChanged', () => window.location.reload());
+}
+
+function showStatus(text, type) {
+  const s = document.getElementById('status');
+  s.textContent = text;
+  s.className = 'status ' + type;
+  setTimeout(() => { if(s.textContent === text) s.style.display = 'none'; }, 6000); // 6秒后自动隐藏
+}
+
+function setBtnState(id, disabled) {
+  document.getElementById(id).disabled = disabled;
+}
+
+async function connectWallet() {
+  if (!window.ethereum) return alert('请在 TokenPocket 或 MetaMask 钱包浏览器内打开');
+  try {
+    provider = new ethers.providers.Web3Provider(window.ethereum);
+    await provider.send("eth_requestAccounts", []);
+    const net = await provider.getNetwork();
+    if (net.chainId !== CONFIG.chainId) return alert('请切换钱包网络至 BSC 主网');
+    
+    signer = provider.getSigner();
+    userAddress = await signer.getAddress();
+    
+    tokenContract = new ethers.Contract(CONFIG.tokenAddr, ABI, signer);
+    logicContract = new ethers.Contract(CONFIG.logicAddr, ABI, signer);
+    
+    document.getElementById('connectBtn').textContent = userAddress.slice(0,6) + '...' + userAddress.slice(-4);
+    document.getElementById('myLinkDisplay').textContent = window.location.origin + window.location.pathname + "?ref=" + userAddress;
+    
+    // 动态读取精度
+    tokenDecimals = await tokenContract.decimals().catch(() => 18);
+    refresh();
+  } catch(e) { showStatus('钱包连接失败', 'error'); }
+}
+
+async function refresh() {
+  if (!tokenContract) return;
+  try {
+    rawBalance = await tokenContract.balanceOf(userAddress);
+    document.getElementById('balanceTxt').textContent = `可用余额：${ethers.utils.formatUnits(rawBalance, tokenDecimals)}`;
+    
+    const pending = await logicContract.pendingRewards(userAddress).catch(()=>0);
+    document.getElementById('myReward').textContent = parseFloat(ethers.utils.formatEther(pending)).toFixed(6) + ' BNB';
+  } catch (e) { console.error(e); }
+}
+
+function setQuickAmount(percent) {
+  if (rawBalance.eq(0)) return;
+  // 避免浮点数计算导致的精度丢失
+  const amountStr = ethers.utils.formatUnits(rawBalance, tokenDecimals);
+  const targetAmount = (parseFloat(amountStr) * percent).toFixed(6);
+  document.getElementById('burnAmount').value = targetAmount;
+}
+
+async function approve() {
+  setBtnState('approveBtn', true);
+  try {
+    showStatus('正在发起授权请求...', 'info');
+    const tx = await tokenContract.approve(CONFIG.logicAddr, ethers.constants.MaxUint256);
+    await tx.wait();
+    showStatus('✅ 授权成功，可执行燃烧', 'success');
+  } catch (e) { 
+    showStatus('❌ 授权被取消或失败', 'error'); 
+  } finally { setBtnState('approveBtn', false); }
+}
+
+async function burn() {
+  const val = document.getElementById('burnAmount').value;
+  if (!val || parseFloat(val) <= 0) return showStatus('请输入有效燃烧数量', 'error');
+  
+  setBtnState('burnBtn', true);
+  try {
+    showStatus('正在与业务合约交互进行燃烧...', 'info');
+    const amountToBurn = ethers.utils.parseUnits(val.toString(), tokenDecimals);
+    const tx = await logicContract.burn(amountToBurn);
+    await tx.wait();
+    showStatus('🔥 燃烧成功！', 'success');
+    document.getElementById('burnAmount').value = ''; // 清空输入框
+    refresh();
+  } catch (e) { 
+    const msg = e.reason || e.message;
+    showStatus('❌ 交易失败: ' + msg, 'error'); 
+  } finally { setBtnState('burnBtn', false); }
+}
+
+async function bindInviter() {
+  const addr = document.getElementById('inviter').value.trim();
+  if (!ethers.utils.isAddress(addr)) return showStatus('邀请人地址格式不正确', 'error');
+  if (addr.toLowerCase() === userAddress.toLowerCase()) return showStatus('不能绑定自己', 'error');
+
+  setBtnState('bindBtn', true);
+  try {
+    showStatus('正在发起绑定请求...', 'info');
+    const tx = await logicContract.bindInviter(addr);
+    await tx.wait();
+    showStatus('✅ 绑定成功！', 'success');
+  } catch (e) { 
+    showStatus('❌ 绑定失败: 合约拒绝执行 (可能已绑定)', 'error'); 
+  } finally { setBtnState('bindBtn', false); }
+}
+
+async function claim() {
+  try {
+    const tx = await logicContract.claimRewards();
+    await tx.wait();
+    alert('分红领取成功！');
+    refresh();
+  } catch (e) { alert('领取失败或无待领取分红'); }
+}
+
+// 工业级兼容性复制函数
+function copyInviteLink() {
+  const link = document.getElementById('myLinkDisplay').textContent;
+  if (link.includes('请先连接')) return alert('请先连接钱包');
+  
+  const textArea = document.createElement("textarea");
+  textArea.value = link;
+  textArea.style.position = "fixed";
+  textArea.style.left = "-9999px";
+  document.body.appendChild(textArea);
+  textArea.select();
+  try {
+    document.execCommand('copy');
+    alert('✅ 专属裂变链接已复制！快去发送给好友吧');
+  } catch (err) { 
+    alert("自动复制失败，请手动长按页面红色链接复制"); 
+  }
+  document.body.removeChild(textArea);
+}
+</script>
+</body>
+</html>
