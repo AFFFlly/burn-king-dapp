@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>燃烧王 | 工业级最终版</title>
+<script src="https://cdn.bootcdn.net/ajax/libs/ethers/5.7.2/ethers.umd.min.js"></script>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box;font-family:sans-serif}
+  body{background:#0a0a0a;color:#fff;padding:15px}
+  .container{max-width:480px;margin:0 auto}
+  .card{background:#121212;border-radius:20px;padding:22px;margin:15px 0;border:1px solid #222}
+  .logo{font-size:22px;font-weight:700;color:#ff3d3d;text-align:center;margin-bottom:10px}
+  #connectBtn{background:#ff3d3d;color:#fff;border:none;padding:12px;border-radius:12px;width:100%;font-weight:700;cursor:pointer}
+  .status-row{display:flex;justify-content:space-between;align-items:center;margin-bottom:15px;font-size:13px}
+  .status-tag{padding:4px 10px;border-radius:8px;font-weight:700}
+  .tag-off{background:#333;color:#888}
+  .tag-on{background:#153a25;color:#81c784}
+  input{width:100%;background:#1a1a1a;border:1px solid #333;border-radius:14px;padding:16px;color:#fff;font-size:16px;margin:10px 0}
+  .main-btn{width:100%;background:#ff3d3d;color:#fff;border:none;padding:18px;border-radius:16px;font-weight:700;cursor:pointer;margin-top:10px}
+  .debug-box{background:#000;padding:12px;border-radius:10px;font-family:monospace;font-size:11px;color:#00ff00;margin-top:15px;max-height:100px;overflow-y:auto;border:1px solid #333}
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="logo">🔥 燃烧王 · 核心系统</div>
+  <button id="connectBtn" onclick="connectWallet()">连接钱包</button>
+
+  <div class="card">
+    <div class="status-row">
+      <span>绑定状态：</span>
+      <span id="bindStatus" class="status-tag tag-off">未检测</span>
+    </div>
+    <div class="status-row">
+      <span>当前邀请人：</span>
+      <span id="inviterAddr" style="color:#aaa">--</span>
+    </div>
+    <input type="text" id="inviterInput" placeholder="输入邀请人地址 0x...">
+    <button class="main-btn" id="bindBtn" onclick="bindInviter()">执行绑定</button>
+  </div>
+
+  <div class="card">
+    <div class="status-row"><span>账户余额：</span><strong id="balanceShow" style="font-size:18px">--</strong></div>
+    <input type="number" id="burnAmount" placeholder="燃烧数量">
+    <button class="main-btn" onclick="approve()" style="background:#222;border:1px solid #444;font-size:14px">1. 授权 (Approve)</button>
+    <button class="main-btn" onclick="burn()">2. 确认燃烧 (Burn)</button>
+  </div>
+
+  <div class="card">
+    <div class="status-row"><span>待领分红：</span><strong id="rewardShow" style="color:#ff3d3d">-- BNB</strong></div>
+    <button class="main-btn" onclick="claim()" style="background:#2a2a2a">领取分红</button>
+  </div>
+
+  <div class="debug-box" id="debugLog">> 系统就绪，请连接钱包...</div>
+</div>
+
+<script>
+// ================= 严格执行您的地址分工 =================
+const CONFIG = {
+  chainId: 56,
+  tokenAddr: "0x1382992c4f997a21256be58dc546e9937a5f7777", // 负责余额
+  logicAddr: "0xe3115d9dad43e47e9ae54d3cef1001aa34d8e602"  // 负责业务
+};
+
+const ABI = [
+  "function balanceOf(address) view returns (uint256)",
+  "function approve(address, uint256) returns (bool)",
+  "function burn(uint256)",
+  "function bindInviter(address)",
+  "function inviter(address) view returns (address)", // 关键：探测绑定状态
+  "function pendingRewards(address) view returns (uint256)"
+];
+
+let signer, userAddress, tokenContract, logicContract;
+
+function log(msg) {
+  const box = document.getElementById('debugLog');
+  box.innerHTML += `<br>> ${msg}`;
+  box.scrollTop = box.scrollHeight;
+}
+
+async function connectWallet() {
+  if (!window.ethereum) return alert('请在钱包内打开');
+  try {
+    const provider = new ethers.providers.Web3Provider(window.ethereum);
+    await provider.send("eth_requestAccounts", []);
+    signer = provider.getSigner();
+    userAddress = await signer.getAddress();
+    
+    tokenContract = new ethers.Contract(CONFIG.tokenAddr, ABI, signer);
+    logicContract = new ethers.Contract(CONFIG.logicAddr, ABI, signer);
+    
+    document.getElementById('connectBtn').textContent = userAddress.slice(0,6)+'...'+userAddress.slice(-4);
+    log(`连接成功: ${userAddress}`);
+    refresh();
+  } catch (e) { log("连接失败"); }
+}
+
+async function refresh() {
+  try {
+    // 1. 查余额 (来自 Token 合约)
+    const bal = await tokenContract.balanceOf(userAddress);
+    document.getElementById('balanceShow').textContent = ethers.utils.formatUnits(bal, 18);
+    
+    // 2. 查绑定状态 (来自 Logic 合约)
+    const currentInviter = await logicContract.inviter(userAddress);
+    const bindTag = document.getElementById('bindStatus');
+    const inviterAddrTxt = document.getElementById('inviterAddr');
+    
+    if (currentInviter !== "0x0000000000000000000000000000000000000000") {
+      bindTag.textContent = "已绑定";
+      bindTag.className = "status-tag tag-on";
+      inviterAddrTxt.textContent = currentInviter.slice(0,10) + "...";
+      document.getElementById('inviterInput').disabled = true;
+      document.getElementById('bindBtn').disabled = true;
+      document.getElementById('bindBtn').style.opacity = "0.5";
+    } else {
+      bindTag.textContent = "未绑定";
+      bindTag.className = "status-tag tag-off";
+    }
+
+    // 3. 查分红
+    const reward = await logicContract.pendingRewards(userAddress).catch(()=>0);
+    document.getElementById('rewardShow').textContent = ethers.utils.formatEther(reward) + ' BNB';
+    log("数据已更新");
+  } catch (e) { log("状态刷新异常"); }
+}
+
+async function approve() {
+  try {
+    log("正在向代币合约请求授权...");
+    const tx = await tokenContract.approve(CONFIG.logicAddr, ethers.constants.MaxUint256);
+    log(`交易已发出: ${tx.hash.slice(0,10)}...`);
+    await tx.wait();
+    log("✅ 授权确认成功！");
+  } catch (e) { log("❌ 授权失败"); }
+}
+
+async function burn() {
+  const val = document.getElementById('burnAmount').value;
+  if (!val) return log("请输入数量");
+  try {
+    log(`尝试燃烧 ${val} 个代币...`);
+    const tx = await logicContract.burn(ethers.utils.parseUnits(val.toString(), 18));
+    log(`燃烧交易已广播，等待扣款...`);
+    const receipt = await tx.wait();
+    if (receipt.status === 1) {
+      log("🔥 燃烧成功，余额已扣除！");
+      refresh();
+    } else {
+      log("❌ 链上执行回滚 (Revert)");
+    }
+  } catch (e) { 
+    log("❌ 燃烧拒绝: " + (e.reason || "请检查授权或绑定")); 
+  }
+}
+
+async function bindInviter() {
+  const addr = document.getElementById('inviterInput').value;
+  try {
+    log("提交绑定请求...");
+    const tx = await logicContract.bindInviter(addr);
+    await tx.wait();
+    log("✅ 绑定完成！");
+    refresh();
+  } catch (e) { log("❌ 绑定失败: 可能已存在上级"); }
+}
+
+async function claim() {
+  try {
+    const tx = await logicContract.claimRewards();
+    await tx.wait();
+    log("✅ 分红领取成功");
+    refresh();
+  } catch (e) { log("❌ 领取失败"); }
+}
+</script>
+</body>
+</html>
