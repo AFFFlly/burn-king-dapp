@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>燃烧王 🔥 BSC最强燃烧分红</title>
+<!-- 使用最稳定的 CDN -->
+<script src="https://cdn.jsdelivr.net/npm/ethers@5.7.2/dist/ethers.umd.min.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#050505;color:#fff;font-family:Arial,"微软雅黑";padding-bottom:40px}
+.container{max-width:500px;margin:0 auto;padding:20px}
+.header{display:flex;justify-content:space-between;align-items:center;padding:15px 0}
+.logo{font-size:26px;font-weight:bold;color:#ff4444}
+.connect{background:#ff4444;color:#fff;border:none;padding:12px 20px;border-radius:12px;font-weight:bold;cursor:pointer}
+.main{background:#101010;border-radius:20px;padding:25px;margin:20px 0}
+.title{color:#ff4444;font-size:20px;margin-bottom:15px}
+.input{width:100%;background:#1a1a1a;border:1px solid #333;color:#fff;padding:16px;border-radius:14px;margin:10px 0}
+.quick{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:10px}
+.quick button{background:#222;color:#fff;border:none;padding:12px;border-radius:10px;cursor:pointer}
+.btn{width:100%;background:#ff4444;color:#fff;border:none;padding:18px;border-radius:14px;font-size:16px;font-weight:bold;margin-top:10px;cursor:pointer}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:15px 0}
+.grid .item{background:#1a1a1a;padding:15px;border-radius:12px}
+.grid strong{color:#ff4444}
+.warn{color:#ffaa00;font-size:12px;margin-top:10px}
+.status{padding:12px;border-radius:10px;text-align:center;margin-top:10px}
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="header">
+    <div class="logo">燃烧王 🔥</div>
+    <button id="connect" class="connect">连接钱包</button>
+  </div>
+  <div class="main">
+    <div class="title">🔥 燃烧即挖矿 · 全网分BNB</div>
+    <div id="balance" style="color:#aaa;margin-bottom:10px">余额：0</div>
+    <input class="input" id="amount" placeholder="输入燃烧数量" type="number">
+    <div class="quick">
+      <button onclick="quickSet(25)">25%</button>
+      <button onclick="quickSet(50)">50%</button>
+      <button onclick="quickSet(100)">100%</button>
+    </div>
+    <button class="btn" onclick="handleApprove()">✅ 授权</button>
+    <button class="btn" onclick="handleBurn()">🔥 确认燃烧</button>
+    <div class="warn">⚠️ 燃烧永久销毁，手续费全网分红</div>
+    <div id="status" class="status"></div>
+  </div>
+  <div class="main">
+    <div class="title">📊 全网数据</div>
+    <div class="grid">
+      <div class="item">总燃烧<br><strong id="tb">0</strong></div>
+      <div class="item">燃烧人数<br><strong id="bc">0</strong></div>
+      <div class="item">今日燃烧<br><strong id="td">0</strong></div>
+      <div class="item">我的分红<br><strong id="rw">0 BNB</strong></div>
+    </div>
+    <button class="btn" onclick="handleClaim()">💰 领取分红</button>
+  </div>
+  <div class="main">
+    <div class="title">👥 邀请绑定</div>
+    <div class="invite-flex" style="display:flex;gap:8px;">
+      <input class="input" id="invite" placeholder="输入邀请人地址" style="flex:1;">
+      <button class="btn" style="width:auto;padding:16px 20px;" onclick="handleBind()">绑定</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ================= 配置 =================
+const CONFIG = {
+  tokenAddress: "0xfd90cB09dBd6333519924E5c395d356AfEEc7777", // 可替换为您想要的合约地址
+  decimals: 18
+};
+
+// ================= ABI（完整正确）=================
+const ABI = [
+  {"inputs":[],"stateMutability":"nonpayable","type":"constructor"},
+  {"anonymous":false,"inputs":[{"indexed":true,"internalType":"address","name":"user","type":"address"},{"indexed":false,"internalType":"uint256","name":"amount","type":"uint256"}],"name":"Burn","type":"event"},
+  {"anonymous":false,"inputs":[{"indexed":true,"internalType":"address","name":"user","type":"address"},{"indexed":false,"internalType":"uint256","name":"reward","type":"uint256"}],"name":"ClaimReward","type":"event"},
+  {"anonymous":false,"inputs":[{"indexed":true,"internalType":"address","name":"user","type":"address"},{"indexed":true,"internalType":"address","name":"inviter","type":"address"}],"name":"BindInviter","type":"event"},
+  {"anonymous":false,"inputs":[{"indexed":true,"internalType":"address","name":"owner","type":"address"},{"indexed":true,"internalType":"address","name":"spender","type":"address"},{"indexed":false,"internalType":"uint256","name":"value","type":"uint256"}],"name":"Approval","type":"event"},
+  {"anonymous":false,"inputs":[{"indexed":true,"internalType":"address","name":"from","type":"address"},{"indexed":true,"internalType":"address","name":"to","type":"address"},{"indexed":false,"internalType":"uint256","name":"value","type":"uint256"}],"name":"Transfer","type":"event"},
+  {"stateMutability":"payable","type":"receive"},
+  {"inputs":[],"name":"DECIMALS","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},
+  {"inputs":[],"name":"DEAD_ADDRESS","outputs":[{"internalType":"address","name":"","type":"address"}],"stateMutability":"view","type":"function"},
+  {"inputs":[],"name":"TOTAL_SUPPLY","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},
+  {"inputs":[{"internalType":"uint256","name":"amount","type":"uint256"}],"name":"burn","outputs":[],"stateMutability":"nonpayable","type":"function"},
+  {"inputs":[],"name":"burnerCount","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},
+  {"inputs":[],"name":"claimRewards","outputs":[],"stateMutability":"nonpayable","type":"function"},
+  {"inputs":[{"internalType":"address","name":"_inviter","type":"address"}],"name":"bindInviter","outputs":[],"stateMutability":"nonpayable","type":"function"},
+  {"inputs":[],"name":"totalBurned","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},
+  {"inputs":[],"name":"todayBurn","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},
+  {"inputs":[{"internalType":"address","name":"user","type":"address"}],"name":"pendingRewards","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},
+  {"inputs":[{"internalType":"address","name":"user","type":"address"}],"name":"userBurned","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},
+  {"inputs":[],"name":"name","outputs":[{"internalType":"string","name":"","type":"string"}],"stateMutability":"view","type":"function"},
+  {"inputs":[],"name":"symbol","outputs":[{"internalType":"string","name":"","type":"string"}],"stateMutability":"view","type":"function"},
+  {"inputs":[],"name":"totalSupply","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},
+  {"inputs":[{"internalType":"address","name":"account","type":"address"}],"name":"balanceOf","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},
+  {"inputs":[{"internalType":"address","name":"owner","type":"address"},{"internalType":"address","name":"spender","type":"address"}],"name":"allowance","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},
+  {"inputs":[{"internalType":"address","name":"recipient","type":"address"},{"internalType":"uint256","name":"amount","type":"uint256"}],"name":"transfer","outputs":[{"internalType":"bool","name":"","type":"bool"}],"stateMutability":"nonpayable","type":"function"},
+  {"inputs":[{"internalType":"address","name":"spender","type":"address"},{"internalType":"uint256","name":"amount","type":"uint256"}],"name":"approve","outputs":[{"internalType":"bool","name":"","type":"bool"}],"stateMutability":"nonpayable","type":"function"}
+];
+
+let provider, signer, contract, userAddress;
+
+function setStatus(text, bg, color) {
+  const s = document.getElementById('status');
+  s.innerText = text;
+  s.style.background = bg || '#1e1e1e';
+  s.style.color = color || '#ffaa00';
+}
+
+async function connectWallet() {
+  if (!window.ethereum) return setStatus('❌ 请安装MetaMask', '#330000', '#ff6666');
+  try {
+    provider = new ethers.providers.Web3Provider(window.ethereum);
+    await provider.send('eth_requestAccounts', []);
+    signer = provider.getSigner();
+    userAddress = await signer.getAddress();
+    contract = new ethers.Contract(CONFIG.tokenAddress, ABI, signer);
+    document.getElementById('connect').innerText = userAddress.slice(0,6)+'...'+userAddress.slice(-4);
+    setStatus('✅ 已连接', '#0a2a0a', '#88ff88');
+    refreshAllData();
+  } catch (e) {
+    setStatus('❌ 连接失败', '#330000', '#ff6666');
+  }
+}
+
+async function refreshAllData() {
+  if (!contract || !userAddress) return;
+  try {
+    const bal = await contract.balanceOf(userAddress);
+    document.getElementById('balance').innerText = '余额：' + ethers.utils.formatUnits(bal, CONFIG.decimals);
+    const tb = await contract.totalBurned();
+    document.getElementById('tb').innerText = ethers.utils.formatUnits(tb, CONFIG.decimals);
+    const td = await contract.todayBurn();
+    document.getElementById('td').innerText = ethers.utils.formatUnits(td, CONFIG.decimals);
+    const bc = await contract.burnerCount();
+    document.getElementById('bc').innerText = bc.toString();
+    const rw = await contract.pendingRewards(userAddress);
+    document.getElementById('rw').innerText = ethers.utils.formatEther(rw) + ' BNB';
+  } catch (e) {}
+}
+
+async function quickSet(p) {
+  if (!contract || !userAddress) return setStatus('请先连接', '#332200', '#ffaa00');
+  const bal = await contract.balanceOf(userAddress);
+  document.getElementById('amount').value = ethers.utils.formatUnits(bal.mul(p).div(100), CONFIG.decimals);
+}
+
+async function handleApprove() {
+  if (!contract || !userAddress) return setStatus('请先连接', '#332200', '#ffaa00');
+  const amount = ethers.utils.parseUnits(document.getElementById('amount').value || '0', CONFIG.decimals);
+  if (amount.isZero()) return setStatus('输入数量', '#332200', '#ffaa00');
+  try {
+    setStatus('授权中...', '#222266');
+    const tx = await contract.approve(CONFIG.tokenAddress, amount);
+    await tx.wait();
+    setStatus('✅ 授权成功', '#0a2a0a', '#88ff88');
+  } catch (e) {
+    setStatus('❌ 授权失败', '#330000', '#ff6666');
+  }
+}
+
+async function handleBurn() {
+  if (!contract || !userAddress) return setStatus('请先连接', '#332200', '#ffaa00');
+  const amount = ethers.utils.parseUnits(document.getElementById('amount').value || '0', CONFIG.decimals);
+  if (amount.isZero()) return setStatus('输入数量', '#332200', '#ffaa00');
+  try {
+    setStatus('燃烧中...', '#442200');
+    const tx = await contract.burn(amount);
+    await tx.wait();
+    setStatus('✅ 燃烧成功', '#0a2a0a', '#88ff88');
+    refreshAllData();
+  } catch (e) {
+    setStatus('❌ 燃烧失败', '#330000', '#ff6666');
+  }
+}
+
+async function handleClaim() {
+  if (!contract || !userAddress) return setStatus('请先连接', '#332200', '#ffaa00');
+  try {
+    setStatus('领取中...', '#226622');
+    const tx = await contract.claimRewards();
+    await tx.wait();
+    setStatus('✅ 领取成功', '#0a2a0a', '#88ff88');
+    refreshAllData();
+  } catch (e) {
+    setStatus('❌ 领取失败', '#330000', '#ff6666');
+  }
+}
+
+async function handleBind() {
+  if (!contract || !userAddress) return setStatus('请先连接', '#332200', '#ffaa00');
+  const inviter = document.getElementById('invite').value.trim();
+  if (!ethers.utils.isAddress(inviter)) return setStatus('无效地址', '#332200', '#ffaa00');
+  try {
+    setStatus('绑定中...', '#224466');
+    const tx = await contract.bindInviter(inviter);
+    await tx.wait();
+    setStatus('✅ 绑定成功', '#0a2a0a', '#88ff88');
+  } catch (e) {
+    setStatus('❌ 绑定失败', '#330000', '#ff6666');
+  }
+}
+
+document.getElementById('connect').onclick = connectWallet;
+window.addEventListener('load', () => setStatus('🟡 请连接钱包'));
+</script>
+</body>
+</html>
