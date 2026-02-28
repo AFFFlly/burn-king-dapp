@@ -4,6 +4,7 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>燃烧王🔥🔥🔥 | BSC燃烧分红DApp</title>
+<script src="https://cdn.bootcdn.net/ajax/libs/ethers/5.7.2/ethers.umd.min.js"></script>
 <style>
   *{margin:0;padding:0;box-sizing:border-box;font-family:"PingFang SC","Microsoft YaHei",sans-serif}
   body{background:#0a0a0a;color:#fff;padding:15px}
@@ -30,41 +31,6 @@
   .status.success{background:#153a25;color:#81c784}
   .status.error{background:#3a1518;color:#e57373}
 </style>
-<!-- 动态加载 ethers 库（多 CDN 备选） -->
-<script>
-(function() {
-  // 待尝试的 CDN 列表
-  var cdnList = [
-    'https://cdn.bootcdn.net/ajax/libs/ethers/5.7.2/ethers.umd.min.js',
-    'https://cdn.staticfile.org/ethers/5.7.2/ethers.umd.min.js',
-    'https://cdn.jsdelivr.net/npm/ethers@5.7.2/dist/ethers.umd.min.js',
-    'https://unpkg.com/ethers@5.7.2/dist/ethers.umd.min.js'
-  ];
-  var loaded = false;
-  function tryLoad(index) {
-    if (loaded) return;
-    if (index >= cdnList.length) {
-      // 所有 CDN 都失败了，显示错误提示
-      var errDiv = document.createElement('div');
-      errDiv.style.color = '#e57373';
-      errDiv.style.background = '#3a1518';
-      errDiv.style.padding = '20px';
-      errDiv.style.borderRadius = '10px';
-      errDiv.style.margin = '20px';
-      errDiv.style.textAlign = 'center';
-      errDiv.innerHTML = '❌ 无法加载 ethers 库，请检查网络或手动刷新。<br>如果问题持续，请复制下方代码手动内联。';
-      document.body.prepend(errDiv);
-      return;
-    }
-    var script = document.createElement('script');
-    script.src = cdnList[index];
-    script.onload = function() { loaded = true; };
-    script.onerror = function() { tryLoad(index+1); };
-    document.head.appendChild(script);
-  }
-  tryLoad(0);
-})();
-</script>
 </head>
 <body>
 <div class="container">
@@ -101,19 +67,27 @@
   <button class="main-btn" id="claimBtn" onclick="claim()" style="width:100%;margin-top:16px">领取分红</button>
 </div>
 
+<!-- 新增邀请绑定卡片（合约强制要求） -->
+<div class="card">
+  <h3>👥 邀请绑定</h3>
+  <input type="text" id="inviter" placeholder="输入邀请人地址 (0x...)" style="width:100%; background:#1a1a1a; border:1px solid #333; border-radius:14px; padding:16px; color:#fff; font-size:16px; margin-bottom:10px;">
+  <button class="main-btn" onclick="bindInviter()" style="width:100%;">绑定邀请人</button>
+  <p style="color:#aaa; font-size:12px; margin-top:8px;">绑定后才能燃烧，可从项目方获取邀请地址</p >
+</div>
+
 </div>
 
 <script>
 // ====================== 配置 ======================
 const CONFIG = {
-  chainId: "0x38",                // BSC主网 chainId
-  tokenAddress: "0xfd90cB09dBd6333519924E5c395d356AfEEc7777",  // 您的燃烧合约地址（请确认正确）
+  chainId: "0x38",
+  tokenAddress: "0xfd90cB09dBd6333519924E5c395d356AfEEc7777",  // 您的燃烧合约地址
   symbol: "燃烧王🔥🔥🔥",
   decimals: 18
 };
 // ==================================================
 
-// 完整且正确的ABI
+// ABI 包含 bindInviter 函数
 const ABI = [
   {"inputs":[],"stateMutability":"nonpayable","type":"constructor"},
   {"anonymous":false,"inputs":[{"indexed":true,"internalType":"address","name":"owner","type":"address"},{"indexed":true,"internalType":"address","name":"spender","type":"address"},{"indexed":false,"internalType":"uint256","name":"value","type":"uint256"}],"name":"Approval","type":"event"},
@@ -125,6 +99,7 @@ const ABI = [
   {"inputs":[{"internalType":"uint256","name":"amount","type":"uint256"}],"name":"burn","outputs":[],"stateMutability":"nonpayable","type":"function"},
   {"inputs":[],"name":"burnerCount","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},
   {"inputs":[],"name":"claimRewards","outputs":[],"stateMutability":"nonpayable","type":"function"},
+  {"inputs":[{"internalType":"address","name":"_inviter","type":"address"}],"name":"bindInviter","outputs":[],"stateMutability":"nonpayable","type":"function"},
   {"inputs":[],"name":"decimals","outputs":[{"internalType":"uint8","name":"","type":"uint8"}],"stateMutability":"view","type":"function"},
   {"inputs":[],"name":"name","outputs":[{"internalType":"string","name":"","type":"string"}],"stateMutability":"view","type":"function"},
   {"inputs":[],"name":"symbol","outputs":[{"internalType":"string","name":"","type":"string"}],"stateMutability":"view","type":"function"},
@@ -250,6 +225,27 @@ async function claim() {
     await tx.wait();
     showStatus('分红领取成功', 'success');
     refreshAll();
+  } catch (e) {
+    showStatus(e.message, 'error');
+  }
+}
+
+// 新增绑定邀请人函数
+async function bindInviter() {
+  if (!contract) {
+    showStatus('请先连接钱包', 'error');
+    return;
+  }
+  const inviter = document.getElementById('inviter').value.trim();
+  if (!ethers.utils.isAddress(inviter)) {
+    showStatus('请输入有效的钱包地址', 'error');
+    return;
+  }
+  try {
+    showStatus('绑定中...', 'info');
+    const tx = await contract.bindInviter(inviter);
+    await tx.wait();
+    showStatus('绑定成功', 'success');
   } catch (e) {
     showStatus(e.message, 'error');
   }
