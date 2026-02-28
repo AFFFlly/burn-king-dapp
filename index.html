@@ -1,0 +1,69 @@
+// ================= 核心双合约配置 =================
+const CONFIG = {
+  chainId: 56,
+  // 1. 代币合约地址（这是你之前那个 0xe880 开头的地址，负责查余额）
+  tokenAddress: "0xe8803797e060a45cdf5b45249c3316da5bd87777", 
+  
+  // 2. 逻辑合约地址（这是你现在这个 0xe311 开头的地址，负责绑定和燃烧）
+  logicAddress: "0xe3115d9dad43e47e9ae54d3cef1001aa34d8e602"
+};
+
+// ... ABI 保持不变 ...
+
+let tokenContract, logicContract;
+
+async function connectWallet() {
+  // ... 连接逻辑保持不变 ...
+  signer = provider.getSigner();
+  userAddress = await signer.getAddress();
+  
+  // 分别初始化两个合约实例
+  tokenContract = new ethers.Contract(CONFIG.tokenAddress, ABI, signer);
+  logicContract = new ethers.Contract(CONFIG.logicAddress, ABI, signer);
+  
+  // ... 邀请链接生成逻辑保持不变 ...
+  refresh();
+}
+
+async function refresh() {
+  if (!tokenContract || !logicContract) return;
+  try {
+    // 【关键修改】从代币合约查询余额
+    const bal = await tokenContract.balanceOf(userAddress);
+    document.getElementById('balanceTxt').textContent = `余额：${ethers.utils.formatUnits(bal, 18)}`;
+    
+    // 从逻辑合约查询全网数据
+    const total = await logicContract.totalBurned().catch(() => 0);
+    const users = await logicContract.burnerCount().catch(() => 0);
+    const pending = await logicContract.pendingRewards(userAddress).catch(() => 0);
+    
+    document.getElementById('totalBurn').textContent = ethers.utils.formatUnits(total, 18);
+    document.getElementById('burnUsers').textContent = users.toString();
+    document.getElementById('myReward').textContent = ethers.utils.formatEther(pending) + ' BNB';
+  } catch (e) { console.error("同步数据失败", e); }
+}
+
+async function approve() {
+  try {
+    showStatus('正在请求授权...', 'info');
+    // 【关键修改】授权给逻辑合约（允许逻辑合约动用你的代币进行燃烧）
+    const tx = await tokenContract.approve(CONFIG.logicAddress, ethers.constants.MaxUint256);
+    await tx.wait();
+    showStatus('授权成功！', 'success');
+  } catch (e) { showStatus('授权失败', 'error'); }
+}
+
+async function burn() {
+  const val = document.getElementById('burnAmount').value;
+  if (!val) return showStatus('请输入数量', 'error');
+  try {
+    showStatus('正在燃烧...', 'info');
+    // 【关键修改】在逻辑合约上执行燃烧操作
+    const tx = await logicContract.burn(ethers.utils.parseUnits(val.toString(), 18));
+    await tx.wait();
+    showStatus('燃烧成功', 'success');
+    refresh();
+  } catch (e) { showStatus('交易失败', 'error'); }
+}
+
+// bindInviter 同样使用 logicContract 调用
