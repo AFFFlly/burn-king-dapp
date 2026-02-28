@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>燃烧王 | 自动对齐终结版</title>
+<script src="https://cdn.bootcdn.net/ajax/libs/ethers/5.7.2/ethers.umd.min.js"></script>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box;font-family:sans-serif}
+  body{background:#0a0a0a;color:#fff;padding:15px}
+  .card{background:#121212;border-radius:20px;padding:22px;margin:15px 0;border:1px solid #222}
+  .logo{font-size:22px;font-weight:700;color:#ff3d3d;text-align:center;margin-bottom:10px}
+  #connectBtn{background:#ff3d3d;color:#fff;border:none;padding:12px;border-radius:12px;width:100%;font-weight:700;cursor:pointer}
+  .status-row{display:flex;justify-content:space-between;margin-bottom:10px;font-size:13px;color:#aaa}
+  .main-btn{width:100%;background:#ff3d3d;color:#fff;border:none;padding:18px;border-radius:16px;font-weight:700;cursor:pointer;margin-top:10px}
+  .main-btn:disabled{background:#333;color:#888;cursor:not-allowed}
+  .debug-box{background:#000;padding:12px;border-radius:10px;font-family:monospace;font-size:11px;color:#00ff00;margin-top:15px;max-height:150px;overflow-y:auto;border:1px solid #333}
+  .highlight{color:#ff3d3d;font-weight:700}
+</style>
+</head>
+<body>
+<div class="container" style="max-width:480px;margin:0 auto">
+  <div class="logo">🔥 燃烧王系统 (自动对齐)</div>
+  <button id="connectBtn" onclick="connectWallet()">1. 连接钱包 (自动对齐当前地址)</button>
+
+  <div class="card">
+    <div class="status-row"><span>当前操作账号:</span><span id="userAddr" class="highlight">未连接</span></div>
+    <div class="status-row"><span>账户代币余额:</span><span id="balShow" class="highlight">--</span></div>
+  </div>
+
+  <div class="card">
+    <p style="font-size:12px;color:#888">第一步：绑定 (若已绑请跳过)</p>
+    <input type="text" id="inviter" placeholder="邀请人地址" style="width:100%;padding:14px;background:#1a1a1a;color:#fff;border:1px solid #333;border-radius:10px;margin-top:8px">
+    <button class="main-btn" onclick="doBind()">执行绑定</button>
+  </div>
+
+  <div class="card">
+    <p style="font-size:12px;color:#888">第二步：授权 (燃烧前必点一次)</p>
+    <button class="main-btn" onclick="doApprove()" style="background:#222;border:1px solid #444">开启燃烧权限</button>
+    
+    <p style="font-size:12px;color:#888;margin-top:20px">第三步：燃烧 (输入数量扣款)</p>
+    <input type="number" id="amt" placeholder="输入燃烧数量" style="width:100%;padding:14px;background:#1a1a1a;color:#fff;border:1px solid #333;border-radius:10px;margin-top:8px">
+    <button class="main-btn" onclick="doBurn()">确认燃烧扣款</button>
+  </div>
+
+  <div class="debug-box" id="log">> 系统就绪。</div>
+</div>
+
+<script>
+// ================= 严格分工配置 =================
+const CONFIG = {
+  chainId: 56,
+  token: "0x1382992c4f997a21256be58dc546e9937a5f7777", // 负责余额
+  logic: "0xe3115d9dad43e47e9ae54d3cef1001aa34d8e602"  // 负责业务
+};
+
+const ABI = ["function balanceOf(address) view returns (uint256)","function approve(address, uint256) returns (bool)","function burn(uint256)","function bindInviter(address)"];
+
+let signer, user, tokenC, logicC;
+
+// 【核心：自动对齐监听器】
+if (window.ethereum) {
+  // 监听账号切换：一旦你在钱包App里切换账号，网页立刻刷新对齐
+  window.ethereum.on('accountsChanged', (accounts) => {
+    console.log("检测到账号切换，正在自动对齐...");
+    window.location.reload();
+  });
+  // 监听链切换
+  window.ethereum.on('chainChanged', () => window.location.reload());
+}
+
+function log(msg, hash = null) {
+  const b = document.getElementById('log');
+  let content = `<br>> ${msg}`;
+  if(hash) content += `<br><a href="https://bscscan.com/tx/${hash}" target="_blank" style="color:#90caf9;font-size:10px">[链上凭证: ${hash.slice(0,10)}...]</a>`;
+  b.innerHTML += content;
+  b.scrollTop = b.scrollHeight;
+}
+
+async function connectWallet() {
+  if (!window.ethereum) return alert('请在钱包内打开');
+  const p = new ethers.providers.Web3Provider(window.ethereum);
+  await p.send("eth_requestAccounts", []);
+  signer = p.getSigner();
+  user = await signer.getAddress();
+  
+  tokenC = new ethers.Contract(CONFIG.token, ABI, signer);
+  logicC = new ethers.Contract(CONFIG.logic, ABI, signer);
+  
+  // UI对齐显示
+  document.getElementById('userAddr').textContent = user.slice(0,6)+"..."+user.slice(-4);
+  document.getElementById('connectBtn').textContent = "已连接当前地址";
+  log(`地址对齐成功: ${user}`);
+  refresh();
+}
+
+async function refresh() {
+  try {
+    const b = await tokenC.balanceOf(user);
+    document.getElementById('balShow').textContent = ethers.utils.formatUnits(b, 18);
+  } catch (e) { log("数据同步异常"); }
+}
+
+async function doBind() {
+  try {
+    log("提交绑定请求...");
+    const tx = await logicC.bindInviter(document.getElementById('inviter').value);
+    await tx.wait();
+    log("✅ 绑定成功！", tx.hash);
+  } catch (e) { log("❌ 绑定失败: 可能已绑定"); }
+}
+
+async function doApprove() {
+  try {
+    log("提交授权请求 (Approve)...");
+    const tx = await tokenC.approve(CONFIG.logic, ethers.constants.MaxUint256);
+    await tx.wait();
+    log("✅ 授权完成！已开启燃烧权限。", tx.hash);
+  } catch (e) { log("❌ 授权失败"); }
+}
+
+async function doBurn() {
+  const v = document.getElementById('amt').value;
+  if(!v) return log("请输入数量");
+  try {
+    log(`提交燃烧扣款: ${v}...`);
+    // 执行燃烧函数
+    const tx = await logicC.burn(ethers.utils.parseUnits(v.toString(), 18));
+    log("交易已上链，等待确认...", tx.hash);
+    const r = await tx.wait();
+    if(r.status === 1) {
+      log("🔥 燃烧成功！余额已更新。");
+      refresh();
+    }
+  } catch (e) { 
+    log("❌ 燃烧失败: 检查授权或余额"); 
+    console.error(e);
+  }
+}
+</script>
+</body>
+</html>
